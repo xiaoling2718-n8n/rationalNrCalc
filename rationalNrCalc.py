@@ -139,6 +139,13 @@ def to_latex(expr):
     将表达式转换为 LaTeX 格式
     支持：分数、带分数、乘方、科学计数法、绝对值
     """
+    # 处理绝对值 |...| -> \left|...\right|（保留内部内容，交给后面的分数/带分数
+    # /乘方等正则继续处理，从而支持 |3 1/2 - 5| 这类内部含分数的情况）
+    def replace_abs_pair(match):
+        inner = match.group(1)
+        return f"\\left|{inner}\\right|"
+    expr = re.sub(r'\|([^|]*)\|', replace_abs_pair, expr)
+
     # 先处理带括号的带分数（如 (-3 1/4)，通常紧跟在运算符后面）
     # 整体替换为 \left(-整数\frac{分子}{分母}\right)——负号必须放在括号里面，
     # 否则渲染出来会变成 "÷ -\left(...\right)"，负号又跑到括号外面紧贴前一个运算符，
@@ -177,8 +184,9 @@ def to_latex(expr):
         den = match.group(2)
         return f"\\frac{{{num}}}{{{den}}}"
     
-    # 匹配分数，但跳过已经处理的带分数部分
-    expr = re.sub(r'(?<!\d)(\d+)/(\d+)', replace_fraction, expr)
+    # 匹配分数，但跳过已经处理的带分数部分；同时排除小数点相邻的数字
+    # （例如 "1.75/9.89" 不应该把 "75/9" 误判成分数）
+    expr = re.sub(r'(?<![\d.])(\d+)/(\d+)(?!\.)', replace_fraction, expr)
     
     # 处理乘方：a^b -> a^{b}
     # 注意：不要重复替换已经处理过的
@@ -206,16 +214,10 @@ def to_latex(expr):
 
 def to_latex_simple(expr):
     """
-    简单转换，用于显示步骤
+    简单转换，用于显示步骤。复用 to_latex 的分数/带分数解析逻辑，
+    避免像 "1.75/9.89/16" 这样的小数除法被误判成分数。
     """
-    # 处理分数
-    expr = re.sub(r'(\d+)/(\d+)', r'\\frac{\1}{\2}', expr)
-    # 处理乘号
-    expr = expr.replace('×', ' \\times ')
-    expr = expr.replace('÷', ' \\div ')
-    # 处理绝对值
-    expr = expr.replace('|', '\\left|').replace('|', '\\right|')
-    return expr
+    return to_latex(expr)
 
 # ---------- 带分数处理函数 ----------
 def is_mixed_number(expr):
@@ -293,7 +295,9 @@ def calculate_value(expr):
             den = int(match.group(2))
             return f"Fraction({num}, {den})"
         
-        expr_eval = re.sub(r'(\d+)/(\d+)', replace_fraction, expr_without_mixed)
+        # 排除小数点相邻的情况（如 1.75/9.89 不应把 75/9 当成分数），
+        # 否则会把小数拆散成错误的 Fraction 调用
+        expr_eval = re.sub(r'(?<![\d.])(\d+)/(\d+)(?!\.)', replace_fraction, expr_without_mixed)
         expr_eval = re.sub(r'\s+', '', expr_eval)
         
         # ---------- 使用 power_parse 算法处理幂指数 ----------
@@ -656,7 +660,7 @@ def calculate_final_result(expr, difficulty):
             den = int(match.group(2))
             return f"Fraction({num}, {den})"
         
-        expr_eval = re.sub(r'(\d+)/(\d+)', replace_fraction, expr_clean)
+        expr_eval = re.sub(r'(?<![\d.])(\d+)/(\d+)(?!\.)', replace_fraction, expr_clean)
         expr_eval = re.sub(r'\s+', '', expr_eval)
         
         result = eval(expr_eval, namespace)
@@ -855,17 +859,8 @@ def main():
             st.success("🌟 你太棒了！继续挑战！")
         
         st.markdown("---")
-        st.markdown("""
-        **📋 规则说明：**
-        - **重要规则：**
-          - ✅ 每一步必须包含等号 `=`
-          - ✅ 带分数整数和分数之间用一个空格隔开, 如 1 3/4  表示1.75   
-          - ✅ 小括号必须在英文或中文半角模式下输入    
-          - ✅ **最终结果**：必须是最简分数！
-        - 正确一步：怪物-1 HP
-        - 错误一步：怪物反击，你被扣1分
-        """)
         st.caption("💡 点击上方的难度按钮切换级别")
+        st.caption("📌 规则：负数用括号括起来，如 (-3)")
     
     if st.session_state.stage == 0:
         st.info("👋 准备好了吗？点击下方按钮开始挑战！")
