@@ -671,12 +671,12 @@ def calculate_final_result(expr, difficulty):
         return None
 
 # ---------- 游戏逻辑 ----------
-def reset_game():
+def reset_question_state():
+    """重置当前题目/关卡状态，但不清空分数（比如切换难度、开始下一题时用）"""
     st.session_state.stage = 0
     st.session_state.question = None
     st.session_state.steps = []
     st.session_state.current_step_index = 0
-    st.session_state.score = 0
     st.session_state.monster_defeated = False
     st.session_state.feedback = ""
     st.session_state.done = False
@@ -688,6 +688,11 @@ def reset_game():
     st.session_state.numbers = []
     st.session_state.operators = []
     st.session_state.display_expr = ""
+
+def reset_game():
+    """完全重置游戏，包括清空分数（仅用于用户主动点击"重置游戏(清空分数)"）"""
+    reset_question_state()
+    st.session_state.score = 0
 
 def new_question():
     expr = generate_question(st.session_state.difficulty)
@@ -833,7 +838,8 @@ def main():
             ):
                 st.session_state.difficulty = i
                 st.session_state.difficulty_name = level['name']
-                reset_game()
+                # 切换难度只重置当前题目状态，保留之前累计的分数
+                reset_question_state()
                 st.rerun()
     
     current_level = DIFFICULTY_LEVELS[st.session_state.difficulty]
@@ -941,7 +947,8 @@ def main():
                     st.rerun()
             with col2:
                 if st.button("🔄 重新开始", use_container_width=True):
-                    reset_game()
+                    # 只重新开始当前这道题，不清空已经累计的分数
+                    reset_question_state()
                     st.rerun()
         
         if st.button("🔄 重置游戏 (清空分数)", use_container_width=True):
